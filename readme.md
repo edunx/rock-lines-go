@@ -4,8 +4,12 @@
 # 配置
 ```lua
     local file = rock.lines("data.txt")
-    for line in file.line() do
+
+    local line = file.line()
+    while line do
         print(line)
+        line = file.line()
     end
+    
     file.close()
 ```
