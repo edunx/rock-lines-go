@@ -6,37 +6,31 @@ import (
 	"os"
 )
 
-const (
-	MT string = "ROCK_LINES_GO_MT"
-)
-
-func CheckLinesUserData( L *lua.LState , idx int ) *Lines {
-
-	ud := L.CheckUserData( idx )
-
-	v  , ok := ud.Value.(*Lines)
-	if ok {
-		return v
+func (self *Lines) Line(L *lua.LState , args *lua.Args) lua.LValue {
+	if self.scanner.Scan() {
+		return lua.LString(self.scanner.Text())
 	}
-
-	L.TypeError(idx , lua.LTUserData)
-	return nil
+	return lua.LNil
 }
 
-func CreateLinesUserData(L *lua.LState) int {
-	filename := L.CheckString(1)
+func (self *Lines) Close(L *lua.LState , args *lua.Args) lua.LValue {
+	self.fd.Close()
+	return lua.LNil
+}
 
-	//_ , err := os.Stat( filename )
-	//stat , err := os.Stat( filename )
-	//if os.IsNotExist(err) {
-	//	L.RaiseError("%s not found" , filename )
-	//}
-	//size := stat.Size()
+func (self *Lines) Index(L *lua.LState , key string) lua.LValue {
+	if key == "line"  { return lua.NewGFunction( self.Line  ) }
+	if key == "close" { return lua.NewGFunction( self.Close ) }
+	return lua.LNil
+}
+
+func createLinesLightUserData(L *lua.LState  , args *lua.Args ) lua.LValue {
+	filename := args.CheckString(L , 1)
 
 	file , err := os.Open( filename )
 	if err != nil {
 		L.RaiseError("%s open fail" , filename)
-		return 0
+		return lua.LNil
 	}
 
 	lines := &Lines{
@@ -45,56 +39,9 @@ func CreateLinesUserData(L *lua.LState) int {
 		scanner: bufio.NewScanner(file),
 	}
 
-	ud := L.NewUserDataByInterface(lines , MT)
-	L.Push(ud)
-	return 1
-
+	return lines.ToLightUserData(L)
 }
-
 
 func LuaInjectApi(L *lua.LState , parent *lua.LTable) {
-	mt := L.NewTypeMetatable( MT )
-
-	L.SetField(mt , "__index" , L.NewFunction(Get))
-	L.SetField(mt , "__newindex" , L.NewFunction(Set))
-
-	L.SetField(parent , "lines" , L.NewFunction(CreateLinesUserData))
-}
-
-func Get(L *lua.LState) int {
-	self := CheckLinesUserData(L , 1)
-	name := L.CheckString(2)
-	switch name {
-	case "line":
-
-		L.Push(L.NewFunction( func (L *lua.LState) int {
-			if self.scanner.Scan() {
-				L.Push(lua.LString(self.scanner.Text()))
-				return 1
-			}
-
-			L.Push(lua.LNil)
-			return 1
-		}))
-
-	case "close":
-
-		L.Push(L.NewFunction(func(L *lua.LState) int {
-			self.fd.Close()
-			return 0
-		}))
-
-	default:
-		L.Push(lua.LNil)
-	}
-
-	return 1
-}
-
-func Set(L *lua.LState) int {
-	return 0
-}
-
-func (self *Lines) ToUserData(L *lua.LState) *lua.LUserData {
-	return L.NewUserDataByInterface( self , MT )
+	L.SetField(parent , "lines" , lua.NewGFunction( createLinesLightUserData ))
 }
